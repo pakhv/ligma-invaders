@@ -82,5 +82,5 @@ impl Object {
 #[derive(Debug)]
 pub enum ObjectType {
     Player,
-    Alien,
+    //Alien,
 }

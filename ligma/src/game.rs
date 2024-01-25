@@ -11,11 +11,11 @@ use crossterm::{
 };
 
 use crate::{
-    input_controls::InputControls,
+    input_result::InputResult,
     state::{Coord, Object, State},
 };
 
-const MS_PER_UPDATE: u128 = 50;
+const MS_PER_UPDATE: u128 = 10;
 
 #[derive(Debug)]
 pub struct LigmaInvaders {
@@ -41,42 +41,31 @@ impl LigmaInvaders {
         self.set_last_update();
 
         loop {
-            let user_input = if poll(Duration::from_millis(MS_PER_UPDATE as u64))? {
-                handle_input()?
-            } else {
-                None
-            };
-            dbg!(&user_input);
+            if poll(Duration::from_millis(MS_PER_UPDATE as u64))? {
+                let handle_result = self.handle_user_input()?;
 
-            if user_input
-                .as_ref()
-                .is_some_and(|i| i == &InputControls::Quit)
-            {
-                break;
+                match handle_result {
+                    InputResult::Continue => (),
+                    InputResult::Quit => break,
+                }
             }
 
-            self.update_and_render(user_input)?;
+            self.update_and_render()?;
         }
 
         self.reset_screen()
     }
 
-    fn update_and_render(&mut self, user_input: Option<InputControls>) -> Result<()> {
+    fn update_and_render(&mut self) -> Result<()> {
         let mut lag = self.get_elapsed().as_millis();
 
         while lag >= MS_PER_UPDATE {
             self.set_last_update();
             lag -= MS_PER_UPDATE;
 
-            match &user_input {
-                Some(input) => match input {
-                    InputControls::MoveLeft => self.state.player.go_left(),
-                    InputControls::MoveRight => self.state.player.go_right(),
-                    _ => (),
-                },
-                None => (),
-            };
-            self.render()?;
+            if lag < MS_PER_UPDATE {
+                self.render()?;
+            }
         }
 
         Ok(())
@@ -115,28 +104,34 @@ impl LigmaInvaders {
         )?;
         disable_raw_mode()
     }
-}
 
-fn handle_input() -> Result<Option<InputControls>> {
-    match read()? {
-        Event::Key(KeyEvent {
-            code: KeyCode::Left,
-            ..
-        }) => Ok(Some(InputControls::MoveLeft)),
-        Event::Key(KeyEvent {
-            code: KeyCode::Right,
-            ..
-        }) => Ok(Some(InputControls::MoveRight)),
-        Event::Key(KeyEvent {
-            code: KeyCode::Up, ..
-        }) => Ok(Some(InputControls::Shoot)),
-        Event::Key(KeyEvent {
-            code: KeyCode::Char(ch),
-            ..
-        }) => match ch {
-            'q' => Ok(Some(InputControls::Quit)),
-            _ => Ok(None),
-        },
-        _ => Ok(None),
+    fn handle_user_input(&mut self) -> Result<InputResult> {
+        match read()? {
+            Event::Key(KeyEvent {
+                code: KeyCode::Left,
+                ..
+            }) => {
+                self.state.player.go_left();
+                Ok(InputResult::Continue)
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Right,
+                ..
+            }) => {
+                self.state.player.go_right();
+                Ok(InputResult::Continue)
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Up, ..
+            }) => Ok(InputResult::Continue),
+            Event::Key(KeyEvent {
+                code: KeyCode::Char(ch),
+                ..
+            }) => match ch {
+                'q' => Ok(InputResult::Quit),
+                _ => Ok(InputResult::Continue),
+            },
+            _ => Ok(InputResult::Continue),
+        }
     }
 }
