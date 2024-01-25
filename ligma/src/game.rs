@@ -1,23 +1,27 @@
 use std::{
-    io::{stdout, Result, Stdout},
+    io::{stdout, Result, Stdout, Write},
     time::{Duration, SystemTime},
 };
 
 use crossterm::{
     cursor,
     event::{self, poll, read, Event, KeyCode, KeyEvent},
-    execute, style,
+    execute, queue, style,
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::input_controls::InputControls;
+use crate::{
+    input_controls::InputControls,
+    state::{Coord, Object, State},
+};
 
-const MS_PER_UPDATE: u128 = 100;
+const MS_PER_UPDATE: u128 = 50;
 
 #[derive(Debug)]
 pub struct LigmaInvaders {
     last_update: SystemTime,
     std_out: Stdout,
+    state: State,
 }
 
 impl LigmaInvaders {
@@ -25,31 +29,83 @@ impl LigmaInvaders {
         LigmaInvaders {
             last_update: SystemTime::now(),
             std_out: stdout(),
+            state: State {
+                player: Object::create_player(Coord { x: 10, y: 10 }),
+                enemies: vec![],
+            },
         }
     }
 
-    pub fn start(mut self) -> Result<()> {
-        enable_raw_mode()?;
-        execute!(self.std_out, cursor::Hide, terminal::EnterAlternateScreen,)?;
-
+    pub fn start(&mut self) -> Result<()> {
+        self.prepare_screen()?;
         self.set_last_update();
 
         loop {
-            if poll(Duration::from_millis(MS_PER_UPDATE as u64))? {
-                let user_input = handle_input()?;
+            let user_input = if poll(Duration::from_millis(MS_PER_UPDATE as u64))? {
+                handle_input()?
+            } else {
+                None
+            };
+            dbg!(&user_input);
 
-                if user_input
-                    .as_ref()
-                    .is_some_and(|i| i == &InputControls::Quit)
-                {
-                    break;
-                }
-
-                self.update(user_input);
-                self.render();
+            if user_input
+                .as_ref()
+                .is_some_and(|i| i == &InputControls::Quit)
+            {
+                break;
             }
+
+            self.update_and_render(user_input)?;
         }
 
+        self.reset_screen()
+    }
+
+    fn update_and_render(&mut self, user_input: Option<InputControls>) -> Result<()> {
+        let mut lag = self.get_elapsed().as_millis();
+
+        while lag >= MS_PER_UPDATE {
+            self.set_last_update();
+            lag -= MS_PER_UPDATE;
+
+            match &user_input {
+                Some(input) => match input {
+                    InputControls::MoveLeft => self.state.player.go_left(),
+                    InputControls::MoveRight => self.state.player.go_right(),
+                    _ => (),
+                },
+                None => (),
+            };
+            self.render()?;
+        }
+
+        Ok(())
+    }
+
+    fn render(&mut self) -> Result<()> {
+        queue!(self.std_out, terminal::Clear(terminal::ClearType::All))?;
+
+        for Coord { x, y } in &self.state.player.position {
+            queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print("█"))?;
+        }
+
+        self.std_out.flush()
+    }
+
+    fn set_last_update(&mut self) {
+        self.last_update = SystemTime::now();
+    }
+
+    fn get_elapsed(&self) -> Duration {
+        self.last_update.elapsed().unwrap()
+    }
+
+    fn prepare_screen(&mut self) -> Result<()> {
+        enable_raw_mode()?;
+        execute!(self.std_out, cursor::Hide, terminal::EnterAlternateScreen)
+    }
+
+    pub fn reset_screen(&mut self) -> Result<()> {
         execute!(
             self.std_out,
             style::ResetColor,
@@ -59,34 +115,7 @@ impl LigmaInvaders {
         )?;
         disable_raw_mode()
     }
-
-    fn update(&mut self, _user_input: Option<InputControls>) {
-        let mut lag = self.get_elapsed().as_millis();
-
-        while lag >= MS_PER_UPDATE {
-            self.set_last_update();
-            lag -= MS_PER_UPDATE;
-        }
-    }
-
-    fn render(&mut self) {}
-
-    fn set_last_update(&mut self) {
-        self.last_update = SystemTime::now();
-    }
-
-    fn get_elapsed(&self) -> Duration {
-        self.last_update.elapsed().unwrap()
-    }
 }
-//
-// fn sleep(elapsed: Duration) {
-//     if elapsed.as_millis() < MS_PER_UPDATE {
-//         thread::sleep(Duration::from_millis(
-//             (MS_PER_UPDATE - elapsed.as_millis()) as u64,
-//         ));
-//     }
-// }
 
 fn handle_input() -> Result<Option<InputControls>> {
     match read()? {
