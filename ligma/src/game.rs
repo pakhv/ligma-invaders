@@ -1,15 +1,11 @@
 use std::{
-    io::{stdout, Result},
-    thread,
+    io::{stdout, Result, Stdout},
     time::{Duration, SystemTime},
 };
 
 use crossterm::{
     cursor,
-    event::{
-        self, poll, read, Event, KeyCode, KeyEvent, KeyboardEnhancementFlags, ModifierKeyCode,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
+    event::{self, poll, read, Event, KeyCode, KeyEvent},
     execute, style,
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
@@ -19,108 +15,95 @@ use crate::input_controls::InputControls;
 const MS_PER_UPDATE: u128 = 100;
 
 #[derive(Debug)]
-pub struct LigmaInvaders {}
+pub struct LigmaInvaders {
+    last_update: SystemTime,
+    std_out: Stdout,
+}
 
 impl LigmaInvaders {
     pub fn new() -> LigmaInvaders {
-        LigmaInvaders {}
+        LigmaInvaders {
+            last_update: SystemTime::now(),
+            std_out: stdout(),
+        }
     }
 
     pub fn start(mut self) -> Result<()> {
-        let mut stdout = stdout();
-
         enable_raw_mode()?;
-        execute!(
-            stdout,
-            cursor::Hide,
-            terminal::EnterAlternateScreen,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES)
-        )?;
+        execute!(self.std_out, cursor::Hide, terminal::EnterAlternateScreen,)?;
 
-        let mut previous = SystemTime::now();
-        let mut lag: u128 = 0;
+        self.set_last_update();
 
         loop {
             if poll(Duration::from_millis(MS_PER_UPDATE as u64))? {
-                let input = handle_input()?;
+                let user_input = handle_input()?;
 
-                if input.is_some_and(|i| i == InputControls::Quit) {
+                if user_input
+                    .as_ref()
+                    .is_some_and(|i| i == &InputControls::Quit)
+                {
                     break;
                 }
 
-                let current = SystemTime::now();
-                let elapsed = previous.elapsed().unwrap();
-                lag += elapsed.as_millis();
-
-                self.update(lag);
+                self.update(user_input);
                 self.render();
-
-                previous = current;
-                //sleep(previous.elapsed().unwrap());
             }
         }
 
         execute!(
-            stdout,
+            self.std_out,
             style::ResetColor,
             cursor::Show,
             event::DisableMouseCapture,
             terminal::LeaveAlternateScreen,
-            PopKeyboardEnhancementFlags,
         )?;
         disable_raw_mode()
     }
 
-    fn update(&mut self, lag: u128) -> () {}
+    fn update(&mut self, _user_input: Option<InputControls>) {
+        let mut lag = self.get_elapsed().as_millis();
 
-    fn render(&mut self) -> () {}
-}
+        while lag >= MS_PER_UPDATE {
+            self.set_last_update();
+            lag -= MS_PER_UPDATE;
+        }
+    }
 
-fn sleep(elapsed: Duration) {
-    if elapsed.as_millis() < MS_PER_UPDATE {
-        thread::sleep(Duration::from_millis(
-            (MS_PER_UPDATE - elapsed.as_millis()) as u64,
-        ));
+    fn render(&mut self) {}
+
+    fn set_last_update(&mut self) {
+        self.last_update = SystemTime::now();
+    }
+
+    fn get_elapsed(&self) -> Duration {
+        self.last_update.elapsed().unwrap()
     }
 }
+//
+// fn sleep(elapsed: Duration) {
+//     if elapsed.as_millis() < MS_PER_UPDATE {
+//         thread::sleep(Duration::from_millis(
+//             (MS_PER_UPDATE - elapsed.as_millis()) as u64,
+//         ));
+//     }
+// }
 
 fn handle_input() -> Result<Option<InputControls>> {
     match read()? {
         Event::Key(KeyEvent {
             code: KeyCode::Left,
-            modifiers: _,
-            kind: _,
-            state: _,
-        }) => {
-            println!("Left");
-            Ok(Some(InputControls::MoveLeft))
-        }
+            ..
+        }) => Ok(Some(InputControls::MoveLeft)),
         Event::Key(KeyEvent {
             code: KeyCode::Right,
-            modifiers: _,
-            kind: _,
-            state: _,
-        }) => {
-            println!("Right");
-            Ok(Some(InputControls::MoveRight))
-        }
+            ..
+        }) => Ok(Some(InputControls::MoveRight)),
         Event::Key(KeyEvent {
-            code: KeyCode::Modifier(modifier),
-            modifiers: _,
-            kind: _,
-            state: _,
-        }) => match modifier {
-            ModifierKeyCode::LeftShift => {
-                println!("Shoot");
-                Ok(Some(InputControls::Shoot))
-            }
-            _ => Ok(None),
-        },
+            code: KeyCode::Up, ..
+        }) => Ok(Some(InputControls::Shoot)),
         Event::Key(KeyEvent {
             code: KeyCode::Char(ch),
-            modifiers: _,
-            kind: _,
-            state: _,
+            ..
         }) => match ch {
             'q' => Ok(Some(InputControls::Quit)),
             _ => Ok(None),
