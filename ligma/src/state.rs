@@ -1,11 +1,15 @@
-use std::{cmp, time::SystemTime};
-
 use crate::game::{MAX_X, MAX_Y, MIN_X, MIN_Y, MS_PER_UPDATE};
+use std::{cmp, time::SystemTime};
 
 #[derive(Debug)]
 pub struct State {
     pub player: Player,
-    //pub enemies: Vec<Player>,
+    prototypes: Prototypes,
+}
+
+#[derive(Debug)]
+struct Prototypes {
+    lazer: Vec<Coord>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -36,232 +40,44 @@ pub enum LazerDirection {
     Down,
 }
 
-impl Player {
-    pub fn create_player(x: u16, y: u16) -> Player {
-        let position = vec![
-            Coord {
-                x: 4 + x,
-                y: 0 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 3 + x,
-                y: 0 + y,
-                ch: '┌',
-            },
-            Coord {
-                x: 5 + x,
-                y: 0 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 6 + x,
-                y: 0 + y,
-                ch: '┐',
-            },
-            Coord {
-                x: 0 + x,
-                y: 1 + y,
-                ch: '┌',
-            },
-            Coord {
-                x: 1 + x,
-                y: 1 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 2 + x,
-                y: 1 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 3 + x,
-                y: 1 + y,
-                ch: '┘',
-            },
-            Coord {
-                x: 4 + x,
-                y: 1 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 5 + x,
-                y: 1 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 6 + x,
-                y: 1 + y,
-                ch: '└',
-            },
-            Coord {
-                x: 7 + x,
-                y: 1 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 8 + x,
-                y: 1 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 9 + x,
-                y: 1 + y,
-                ch: '┐',
-            },
-            Coord {
-                x: 0 + x,
-                y: 2 + y,
-                ch: '┃',
-            },
-            Coord {
-                x: 1 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 2 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 3 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 4 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 5 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 6 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 7 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 8 + x,
-                y: 2 + y,
-                ch: ' ',
-            },
-            Coord {
-                x: 9 + x,
-                y: 2 + y,
-                ch: '┃',
-            },
-            Coord {
-                x: 0 + x,
-                y: 3 + y,
-                ch: '└',
-            },
-            Coord {
-                x: 1 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 2 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 3 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 4 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 5 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 6 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 7 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 8 + x,
-                y: 3 + y,
-                ch: '─',
-            },
-            Coord {
-                x: 9 + x,
-                y: 3 + y,
-                ch: '┘',
-            },
-        ];
+impl State {
+    pub fn new() -> State {
+        let player_model = include_str!("./assets/player.txt");
+        let lazer_model = include_str!("./assets/lazer.txt");
 
-        Player {
-            health: 3,
-            position,
-            lazer: None,
+        let player_prototype = parse_prototype(player_model);
+        let lazer_prototype = parse_prototype(lazer_model);
+
+        State {
+            player: Player {
+                health: 3,
+                position: shift_prototype(&player_prototype, 1, 40),
+                lazer: None,
+            },
+            prototypes: Prototypes {
+                lazer: lazer_prototype,
+            },
         }
     }
 
-    pub fn shoot(&mut self) {
-        if self.lazer.is_some() {
+    pub fn player_go_left(&mut self) {
+        self.player.go_left();
+    }
+
+    pub fn player_go_right(&mut self) {
+        self.player.go_right();
+    }
+
+    pub fn player_shoot(&mut self) {
+        if self.player.lazer.is_some() {
             return;
         }
 
-        let tip_position = self.position.first().unwrap();
-
-        self.lazer = Some(Lazer {
-            position: vec![
-                Coord {
-                    x: tip_position.x,
-                    y: tip_position.y - 1,
-                    ch: '┇',
-                },
-                Coord {
-                    x: tip_position.x,
-                    y: tip_position.y - 2,
-                    ch: '┇',
-                },
-            ],
-            direction: LazerDirection::Up,
-            last_update: SystemTime::now(),
-            times_slower_than_cycle: 2,
-        })
+        self.player.shoot(&self.prototypes.lazer);
     }
 
-    pub fn go_left(&mut self) {
-        if self.position.iter().find(|p| p.x <= MIN_X).is_some() {
-            return;
-        }
-
-        self.shift_by(-3, 0);
-    }
-
-    pub fn go_right(&mut self) {
-        if self.position.iter().find(|p| p.x >= MAX_X).is_some() {
-            return;
-        }
-
-        self.shift_by(3, 0);
-    }
-
-    pub fn update_lazer(&mut self) {
-        let lazer = self.lazer.as_mut();
+    pub fn update_player_lazer(&mut self) {
+        let lazer = self.player.lazer.as_mut();
 
         if lazer.is_none() {
             return;
@@ -288,7 +104,7 @@ impl Player {
             .find(|p| p.y as i16 + shift < MIN_Y as i16 || p.y as i16 + shift > MAX_Y as i16)
             .is_some()
         {
-            self.lazer = None;
+            self.player.lazer = None;
             return;
         }
 
@@ -301,6 +117,69 @@ impl Player {
                 ch: p.ch,
             })
             .collect();
+    }
+}
+
+fn parse_prototype(content: &str) -> Vec<Coord> {
+    content
+        .lines()
+        .map(|l| {
+            let mut parts = l.split_whitespace();
+            let x = u16::from_str_radix(parts.next().expect("error parsing assets content"), 10)
+                .expect("error converting to u16");
+            let y = u16::from_str_radix(parts.next().expect("error parsing assets content"), 10)
+                .expect("error converting to u16");
+            let chars = parts
+                .next()
+                .expect("error parsing assets content")
+                .chars()
+                .collect::<Vec<char>>();
+
+            let ch = chars.get(0).expect("");
+
+            Coord { x, y, ch: *ch }
+        })
+        .collect()
+}
+
+fn shift_prototype(prototype: &Vec<Coord>, x_shift: u16, y_shift: u16) -> Vec<Coord> {
+    prototype
+        .iter()
+        .map(|c| Coord {
+            x: c.x + x_shift,
+            y: c.y + y_shift,
+            ch: c.ch,
+        })
+        .collect()
+}
+
+impl Player {
+    fn shoot(&mut self, prototype: &Vec<Coord>) {
+        let tip_position = self.position.first().unwrap();
+        let position = shift_prototype(prototype, tip_position.x, tip_position.y - 2);
+
+        self.lazer = Some(Lazer {
+            position,
+            direction: LazerDirection::Up,
+            last_update: SystemTime::now(),
+            times_slower_than_cycle: 2,
+        })
+    }
+
+    fn go_left(&mut self) {
+        if self.position.iter().find(|p| p.x <= MIN_X).is_some() {
+            return;
+        }
+
+        self.shift_by(-3, 0);
+    }
+
+    fn go_right(&mut self) {
+        if self.position.iter().find(|p| p.x >= MAX_X).is_some() {
+            return;
+        }
+
+        self.shift_by(3, 0);
     }
 
     fn shift_by(&mut self, x_shift: i16, y_shift: i16) {

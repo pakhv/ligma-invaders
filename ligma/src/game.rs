@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::{
     input_result::InputResult,
-    state::{Coord, Player, State},
+    state::{Coord, State},
 };
 
 pub const MS_PER_UPDATE: u128 = 10;
@@ -33,9 +33,7 @@ impl LigmaInvaders {
         LigmaInvaders {
             last_update: SystemTime::now(),
             std_out: stdout(),
-            state: State {
-                player: Player::create_player(1, 40),
-            },
+            state: State::new(),
         }
     }
 
@@ -77,7 +75,7 @@ impl LigmaInvaders {
             self.set_last_update();
             lag -= MS_PER_UPDATE;
 
-            self.state.player.update_lazer();
+            self.state.update_player_lazer();
 
             if lag < MS_PER_UPDATE {
                 self.render()?;
@@ -122,14 +120,14 @@ impl LigmaInvaders {
                 code: KeyCode::Left,
                 ..
             }) => {
-                self.state.player.go_left();
+                self.state.player_go_left();
                 Ok(InputResult::Continue)
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Right,
                 ..
             }) => {
-                self.state.player.go_right();
+                self.state.player_go_right();
                 Ok(InputResult::Continue)
             }
             Event::Key(KeyEvent {
@@ -141,7 +139,7 @@ impl LigmaInvaders {
             }) => match ch {
                 'q' => Ok(InputResult::Quit),
                 ' ' => {
-                    self.state.player.shoot();
+                    self.state.player_shoot();
                     Ok(InputResult::Continue)
                 }
                 _ => Ok(InputResult::Continue),
