@@ -1,5 +1,5 @@
 use crate::{
-    game::{MAX_X, MAX_Y, MIN_X, MIN_Y, MS_PER_UPDATE},
+    game::{MS_PER_UPDATE, VIEWPORT_MAX_X, VIEWPORT_MAX_Y, VIEWPORT_MIN_X, VIEWPORT_MIN_Y},
     ligma_result::LigmaResult,
 };
 use std::{cmp, time::SystemTime};
@@ -13,8 +13,7 @@ pub struct State {
 
 #[derive(Debug)]
 struct Prototypes {
-    lazer: Vec<Coord>,
-    funny_alien: Vec<Coord>,
+    laser: Vec<Coord>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -28,7 +27,7 @@ pub struct Coord {
 pub struct Player {
     pub health: usize,
     pub position: Vec<Coord>,
-    pub lazer: Option<Lazer>,
+    pub laser: Option<Laser>,
 }
 
 #[derive(Debug)]
@@ -45,15 +44,15 @@ pub struct Aliens {
 }
 
 #[derive(Debug, Clone)]
-pub struct Lazer {
+pub struct Laser {
     pub position: Vec<Coord>,
-    pub direction: LazerDirection,
+    pub direction: LaserDirection,
     last_update: SystemTime,
     times_slower_than_cycle: u128,
 }
 
 #[derive(Debug, Clone)]
-pub enum LazerDirection {
+pub enum LaserDirection {
     Up,
     Down,
 }
@@ -71,30 +70,34 @@ const ASSETS_PARSING_ERROR: &str = "error parsing assets content";
 impl State {
     pub fn new() -> LigmaResult<State> {
         let player_model = include_str!("./assets/player.txt");
-        let lazer_model = include_str!("./assets/lazer.txt");
+        let laser_model = include_str!("./assets/laser.txt");
         let funny_alien_model = include_str!("./assets/alien1.txt");
 
         let player_prototype = parse_prototype(player_model)?;
-        let lazer_prototype = parse_prototype(lazer_model)?;
+        let laser_prototype = parse_prototype(laser_model)?;
         let funny_alien_prototype = parse_prototype(funny_alien_model)?;
 
-        let aliens_1 = generate_row_of_aliens(&funny_alien_prototype, 1, 10, 11);
+        let row_one_aliens = generate_row_of_aliens(
+            &funny_alien_prototype,
+            Aliens::INITIAL_X,
+            Aliens::INITIAL_Y,
+            Aliens::NUMBER,
+        );
 
         Ok(State {
             player: Player {
-                health: 3,
-                position: shift_prototype(&player_prototype, 1, 40),
-                lazer: None,
+                health: Player::HEALTH,
+                position: shift_prototype(&player_prototype, Player::INITIAL_X, Player::INITIAL_Y),
+                laser: None,
             },
             aliens: Aliens {
-                positions: aliens_1,
+                positions: row_one_aliens,
                 last_update: SystemTime::now(),
-                times_slower_than_cycle: 100,
-                direction: AlienDirection::Left,
+                times_slower_than_cycle: Aliens::SLOWER_THAN_CYCLE,
+                direction: AlienDirection::Right,
             },
             prototypes: Prototypes {
-                lazer: lazer_prototype,
-                funny_alien: funny_alien_prototype,
+                laser: laser_prototype,
             },
         })
     }
@@ -108,54 +111,51 @@ impl State {
     }
 
     pub fn player_shoot(&mut self) {
-        if self.player.lazer.is_some() {
+        if self.player.laser.is_some() {
             return;
         }
 
-        self.player.shoot(&self.prototypes.lazer);
+        self.player.shoot(&self.prototypes.laser);
     }
 
-    pub fn update_player_lazer(&mut self) {
-        let lazer = self.player.lazer.as_mut();
+    pub fn update_player_laser(&mut self) {
+        let laser = self.player.laser.as_mut();
 
-        if lazer.is_none() {
+        if laser.is_none() {
             return;
         }
 
-        let lazer = lazer.unwrap();
+        let laser = laser.unwrap();
 
-        if lazer.last_update.elapsed().unwrap().as_millis()
-            < lazer.times_slower_than_cycle * MS_PER_UPDATE
+        if laser.last_update.elapsed().unwrap().as_millis()
+            < laser.times_slower_than_cycle * MS_PER_UPDATE
         {
             return;
         }
 
-        lazer.last_update = SystemTime::now();
+        laser.last_update = SystemTime::now();
 
-        let shift: i16 = match lazer.direction {
-            LazerDirection::Up => -1,
-            LazerDirection::Down => 1,
+        let shift: i16 = match laser.direction {
+            LaserDirection::Up => -Player::LASER_SPEED,
+            LaserDirection::Down => Player::LASER_SPEED,
         };
 
-        if lazer
+        if laser
             .position
             .iter()
-            .find(|p| p.y as i16 + shift < MIN_Y as i16 || p.y as i16 + shift > MAX_Y as i16)
+            .find(|p| {
+                p.y as i16 + shift < VIEWPORT_MIN_Y as i16
+                    || p.y as i16 + shift > VIEWPORT_MAX_Y as i16
+            })
             .is_some()
         {
-            self.player.lazer = None;
+            self.player.laser = None;
             return;
         }
 
-        lazer.position = lazer
-            .position
-            .iter()
-            .map(|p| Coord {
-                x: p.x,
-                y: (p.y as i16 + shift) as u16,
-                ch: p.ch,
-            })
-            .collect();
+        laser.position.iter_mut().for_each(|p| {
+            p.y = (p.y as i16 + shift) as u16;
+        });
     }
 
     pub fn update_aliens(&mut self) {
@@ -164,48 +164,70 @@ impl State {
 }
 
 impl Player {
+    const SPEED: i16 = 3;
+    const LASER_SPEED: i16 = 1;
+    const HEALTH: usize = 3;
+    const INITIAL_X: u16 = 1;
+    const INITIAL_Y: u16 = 40;
+    const LASER_SLOWER_THAN_CYCLE: u128 = 2;
+
     fn shoot(&mut self, prototype: &Vec<Coord>) {
         let tip_position = self.position.first().unwrap();
-        let position = shift_prototype(prototype, tip_position.x, tip_position.y - 2);
+        let position = shift_prototype(
+            prototype,
+            tip_position.x,
+            tip_position.y - Laser::MODEL_HEIGHT,
+        );
 
-        self.lazer = Some(Lazer {
+        self.laser = Some(Laser {
             position,
-            direction: LazerDirection::Up,
+            direction: LaserDirection::Up,
             last_update: SystemTime::now(),
-            times_slower_than_cycle: 2,
+            times_slower_than_cycle: Self::LASER_SLOWER_THAN_CYCLE,
         })
     }
 
     fn go_left(&mut self) {
-        if self.position.iter().find(|p| p.x <= MIN_X).is_some() {
+        if self
+            .position
+            .iter()
+            .find(|p| p.x <= VIEWPORT_MIN_X)
+            .is_some()
+        {
             return;
         }
 
-        self.shift_by(-3, 0);
+        self.shift_by(-Self::SPEED);
     }
 
     fn go_right(&mut self) {
-        if self.position.iter().find(|p| p.x >= MAX_X).is_some() {
+        if self
+            .position
+            .iter()
+            .find(|p| p.x >= VIEWPORT_MAX_X)
+            .is_some()
+        {
             return;
         }
 
-        self.shift_by(3, 0);
+        self.shift_by(Self::SPEED);
     }
 
-    fn shift_by(&mut self, x_shift: i16, y_shift: i16) {
-        self.position = self
-            .position
-            .iter()
-            .map(|c| Coord {
-                x: (cmp::max(c.x as i16 + x_shift, 0)) as u16,
-                y: (cmp::max(c.y as i16 + y_shift, 0)) as u16,
-                ch: c.ch,
-            })
-            .collect();
+    fn shift_by(&mut self, x_shift: i16) {
+        self.position.iter_mut().for_each(|c| {
+            c.x = (c.x as i16 + x_shift) as u16;
+        });
     }
 }
 
 impl Aliens {
+    const INITIAL_X: u16 = 1;
+    const INITIAL_Y: u16 = 10;
+    const NUMBER: u16 = 11;
+    const SLOWER_THAN_CYCLE: u128 = 100;
+    const X_SHIFT_PER_UPDATE: i16 = 1;
+    const Y_SHIFT_PER_UPDATE: i16 = 2;
+
     fn update(&mut self) {
         if self.last_update.elapsed().unwrap().as_millis()
             < self.times_slower_than_cycle * MS_PER_UPDATE
@@ -215,33 +237,32 @@ impl Aliens {
 
         self.last_update = SystemTime::now();
 
-        let x_shift: i16 = 1;
-        let y_shift: i16 = 2;
-
         match self.direction {
             AlienDirection::Left => {
-                let change_direction = self.change_direction(-x_shift, MIN_X as i16);
+                let change_direction =
+                    self.change_direction(-Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MIN_X as i16);
 
                 if change_direction {
                     self.direction = AlienDirection::Right;
-                    self.shift_aliens(0, y_shift);
+                    self.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
 
                     return;
                 }
 
-                self.shift_aliens(-x_shift, 0);
+                self.shift_aliens(-Aliens::X_SHIFT_PER_UPDATE, 0);
             }
             AlienDirection::Right => {
-                let change_direction = self.change_direction(x_shift, MAX_X as i16);
+                let change_direction =
+                    self.change_direction(Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MAX_X as i16);
 
                 if change_direction {
                     self.direction = AlienDirection::Left;
-                    self.shift_aliens(0, y_shift);
+                    self.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
 
                     return;
                 }
 
-                self.shift_aliens(x_shift, 0);
+                self.shift_aliens(Aliens::X_SHIFT_PER_UPDATE, 0);
             }
         };
     }
@@ -275,6 +296,10 @@ impl Aliens {
             .map(|a| a.unwrap())
             .any(|a| comparer(a.x as i16 + x_shift, terminal_value))
     }
+}
+
+impl Laser {
+    const MODEL_HEIGHT: u16 = 2;
 }
 
 fn generate_row_of_aliens(

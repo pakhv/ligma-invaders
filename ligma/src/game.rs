@@ -17,10 +17,10 @@ use crate::{
 };
 
 pub const MS_PER_UPDATE: u128 = 10;
-pub const MIN_X: u16 = 1;
-pub const MAX_X: u16 = 130;
-pub const MIN_Y: u16 = 1;
-pub const MAX_Y: u16 = 40;
+pub const VIEWPORT_MIN_X: u16 = 1;
+pub const VIEWPORT_MAX_X: u16 = 130;
+pub const VIEWPORT_MIN_Y: u16 = 1;
+pub const VIEWPORT_MAX_Y: u16 = 40;
 
 #[derive(Debug)]
 pub struct LigmaInvaders {
@@ -82,7 +82,7 @@ impl LigmaInvaders {
             self.set_last_update();
             lag -= MS_PER_UPDATE;
 
-            self.state.update_player_lazer();
+            self.state.update_player_laser();
             self.state.update_aliens();
 
             if lag < MS_PER_UPDATE {
@@ -101,8 +101,8 @@ impl LigmaInvaders {
             queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
         }
 
-        if self.state.player.lazer.is_some() {
-            for Coord { x, y, ch } in &self.state.player.lazer.as_ref().unwrap().position {
+        if self.state.player.laser.is_some() {
+            for Coord { x, y, ch } in &self.state.player.laser.as_ref().unwrap().position {
                 queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
             }
         }
