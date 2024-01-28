@@ -43,7 +43,7 @@ pub struct AliensRow {
 
 #[derive(Debug)]
 pub struct Aliens {
-    pub aliens_rows: [AliensRow; Self::ROWS_NUMBER],
+    pub aliens_rows: Vec<AliensRow>,
     times_slower_than_cycle: u128,
     direction: AlienDirection,
 }
@@ -76,25 +76,9 @@ impl State {
     pub fn new() -> LigmaResult<State> {
         let player_model = include_str!("./assets/player.txt");
         let laser_model = include_str!("./assets/laser.txt");
-        let funny_alien_model = include_str!("./assets/alien1.txt");
 
         let player_prototype = parse_prototype(player_model)?;
         let laser_prototype = parse_prototype(laser_model)?;
-        let funny_alien_prototype = parse_prototype(funny_alien_model)?;
-
-        let row_one_aliens = generate_row_of_aliens(
-            &funny_alien_prototype,
-            Aliens::INITIAL_X,
-            Aliens::INITIAL_Y,
-            Aliens::NUMBER,
-        );
-
-        let row_two_aliens = generate_row_of_aliens(
-            &funny_alien_prototype,
-            Aliens::INITIAL_X,
-            Aliens::INITIAL_Y + 4,
-            Aliens::NUMBER,
-        );
 
         Ok(State {
             player: Player {
@@ -102,23 +86,7 @@ impl State {
                 position: shift_prototype(&player_prototype, Player::INITIAL_X, Player::INITIAL_Y),
                 laser: None,
             },
-            aliens: Aliens {
-                aliens_rows: [
-                    AliensRow {
-                        aliens: row_one_aliens,
-                        last_update: SystemTime::now()
-                            + Duration::from_millis(
-                                Aliens::ROWS_DELAY_SHIFT * MS_PER_UPDATE as u64,
-                            ),
-                    },
-                    AliensRow {
-                        aliens: row_two_aliens,
-                        last_update: SystemTime::now(),
-                    },
-                ],
-                times_slower_than_cycle: Aliens::SLOWER_THAN_CYCLE,
-                direction: AlienDirection::Right,
-            },
+            aliens: Aliens::init()?,
             prototypes: Prototypes {
                 laser: laser_prototype,
             },
@@ -253,6 +221,39 @@ impl Aliens {
     const ROWS_DELAY_SHIFT: u64 = 20;
     const ROWS_NUMBER: usize = 2;
 
+    fn init() -> LigmaResult<Aliens> {
+        let funny_alien_model = include_str!("./assets/alien1.txt");
+        let funny_alien_prototype = parse_prototype(funny_alien_model)?;
+        let step: usize = 4;
+
+        let rows = (0..Self::ROWS_NUMBER)
+            .map(|idx| {
+                let row = generate_row_of_aliens(
+                    &funny_alien_prototype,
+                    Aliens::INITIAL_X,
+                    Aliens::INITIAL_Y + (idx * step) as u16,
+                    Aliens::NUMBER,
+                );
+
+                AliensRow {
+                    aliens: row,
+                    last_update: SystemTime::now()
+                        + Duration::from_millis(
+                            Aliens::ROWS_DELAY_SHIFT
+                                * (Self::ROWS_NUMBER - 1 - idx) as u64
+                                * MS_PER_UPDATE as u64,
+                        ),
+                }
+            })
+            .collect();
+
+        Ok(Aliens {
+            aliens_rows: rows,
+            times_slower_than_cycle: Aliens::SLOWER_THAN_CYCLE,
+            direction: AlienDirection::Right,
+        })
+    }
+
     fn update(&mut self) {
         for aliens_row in self.aliens_rows.iter_mut() {
             match aliens_row.last_update.elapsed() {
@@ -349,7 +350,7 @@ fn generate_row_of_aliens(
 ) -> Vec<Alien> {
     let step: u16 = 9;
 
-    (0..number - 1)
+    (0..number)
         .map(|i| {
             alien_prototype
                 .iter()
@@ -358,10 +359,10 @@ fn generate_row_of_aliens(
                     y: a.y + init_y,
                     ch: a.ch,
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
         .map(|p| Alien { position: p })
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 fn parse_prototype(content: &str) -> LigmaResult<Vec<Coord>> {
