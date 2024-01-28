@@ -2,7 +2,7 @@ use crate::{
     game::{MS_PER_UPDATE, VIEWPORT_MAX_X, VIEWPORT_MAX_Y, VIEWPORT_MIN_X, VIEWPORT_MIN_Y},
     ligma_result::LigmaResult,
 };
-use std::{cmp, time::SystemTime};
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
 pub struct State {
@@ -36,9 +36,14 @@ pub struct Alien {
 }
 
 #[derive(Debug)]
-pub struct Aliens {
-    pub positions: Vec<Alien>,
+pub struct AliensRow {
+    pub aliens: Vec<Alien>,
     last_update: SystemTime,
+}
+
+#[derive(Debug)]
+pub struct Aliens {
+    pub aliens_rows: [AliensRow; Self::ROWS_NUMBER],
     times_slower_than_cycle: u128,
     direction: AlienDirection,
 }
@@ -84,6 +89,13 @@ impl State {
             Aliens::NUMBER,
         );
 
+        let row_two_aliens = generate_row_of_aliens(
+            &funny_alien_prototype,
+            Aliens::INITIAL_X,
+            Aliens::INITIAL_Y + 4,
+            Aliens::NUMBER,
+        );
+
         Ok(State {
             player: Player {
                 health: Player::HEALTH,
@@ -91,8 +103,19 @@ impl State {
                 laser: None,
             },
             aliens: Aliens {
-                positions: row_one_aliens,
-                last_update: SystemTime::now(),
+                aliens_rows: [
+                    AliensRow {
+                        aliens: row_one_aliens,
+                        last_update: SystemTime::now()
+                            + Duration::from_millis(
+                                Aliens::ROWS_DELAY_SHIFT * MS_PER_UPDATE as u64,
+                            ),
+                    },
+                    AliensRow {
+                        aliens: row_two_aliens,
+                        last_update: SystemTime::now(),
+                    },
+                ],
                 times_slower_than_cycle: Aliens::SLOWER_THAN_CYCLE,
                 direction: AlienDirection::Right,
             },
@@ -224,51 +247,62 @@ impl Aliens {
     const INITIAL_X: u16 = 1;
     const INITIAL_Y: u16 = 10;
     const NUMBER: u16 = 11;
-    const SLOWER_THAN_CYCLE: u128 = 100;
+    const SLOWER_THAN_CYCLE: u128 = 10;
     const X_SHIFT_PER_UPDATE: i16 = 1;
     const Y_SHIFT_PER_UPDATE: i16 = 2;
+    const ROWS_DELAY_SHIFT: u64 = 20;
+    const ROWS_NUMBER: usize = 2;
 
     fn update(&mut self) {
-        if self.last_update.elapsed().unwrap().as_millis()
-            < self.times_slower_than_cycle * MS_PER_UPDATE
-        {
-            return;
+        for aliens_row in self.aliens_rows.iter_mut() {
+            match aliens_row.last_update.elapsed() {
+                Ok(elapsed) => {
+                    if elapsed.as_millis() < self.times_slower_than_cycle * MS_PER_UPDATE {
+                        continue;
+                    }
+
+                    if aliens_row.need_to_change_direction(self.direction.clone()) {
+                        self.change_direction();
+                        return;
+                    }
+
+                    let shift = match self.direction {
+                        AlienDirection::Left => -Aliens::X_SHIFT_PER_UPDATE,
+                        AlienDirection::Right => Aliens::X_SHIFT_PER_UPDATE,
+                    };
+
+                    aliens_row.shift_aliens(shift, 0);
+                    aliens_row.last_update = SystemTime::now();
+                }
+                Err(_) => continue,
+            };
         }
-
-        self.last_update = SystemTime::now();
-
-        match self.direction {
-            AlienDirection::Left => {
-                let change_direction =
-                    self.change_direction(-Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MIN_X as i16);
-
-                if change_direction {
-                    self.direction = AlienDirection::Right;
-                    self.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
-
-                    return;
-                }
-
-                self.shift_aliens(-Aliens::X_SHIFT_PER_UPDATE, 0);
-            }
-            AlienDirection::Right => {
-                let change_direction =
-                    self.change_direction(Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MAX_X as i16);
-
-                if change_direction {
-                    self.direction = AlienDirection::Left;
-                    self.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
-
-                    return;
-                }
-
-                self.shift_aliens(Aliens::X_SHIFT_PER_UPDATE, 0);
-            }
-        };
     }
 
+    fn change_direction(&mut self) {
+        self.direction = match self.direction {
+            AlienDirection::Left => AlienDirection::Right,
+            AlienDirection::Right => AlienDirection::Left,
+        };
+
+        self.aliens_rows
+            .iter_mut()
+            .enumerate()
+            .for_each(|(idx, r)| {
+                r.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
+                r.last_update = SystemTime::now()
+                    + Duration::from_millis(
+                        Self::ROWS_DELAY_SHIFT
+                            * (Self::ROWS_NUMBER - 1 - idx) as u64
+                            * MS_PER_UPDATE as u64,
+                    );
+            });
+    }
+}
+
+impl AliensRow {
     fn shift_aliens(&mut self, x_shift: i16, y_shift: i16) {
-        for alien in self.positions.iter_mut() {
+        for alien in self.aliens.iter_mut() {
             alien.position.iter_mut().for_each(|p| {
                 p.x = (p.x as i16 + x_shift) as u16;
                 p.y = (p.y as i16 + y_shift) as u16;
@@ -276,14 +310,19 @@ impl Aliens {
         }
     }
 
-    fn change_direction(&self, x_shift: i16, terminal_value: i16) -> bool {
+    fn need_to_change_direction(&self, direction: AlienDirection) -> bool {
+        let (x_shift, terminal_value) = match direction {
+            AlienDirection::Left => (-Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MIN_X as i16),
+            AlienDirection::Right => (Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MAX_X as i16),
+        };
+
         let comparer = if x_shift > 0 {
             |left: i16, right: i16| left > right
         } else {
             |left: i16, right: i16| left <= right
         };
 
-        self.positions
+        self.aliens
             .iter()
             .map(|a| {
                 if x_shift > 0 {

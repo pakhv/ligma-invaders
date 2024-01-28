@@ -107,9 +107,11 @@ impl LigmaInvaders {
             }
         }
 
-        for alien in &self.state.aliens.positions {
-            for Coord { x, y, ch } in &alien.position {
-                queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+        for aliens_row in &self.state.aliens.aliens_rows {
+            for alien in &aliens_row.aliens {
+                for Coord { x, y, ch } in &alien.position {
+                    queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+                }
             }
         }
 
