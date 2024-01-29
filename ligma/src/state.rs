@@ -213,39 +213,54 @@ impl Player {
 
 impl Aliens {
     const INITIAL_X: u16 = 1;
-    const INITIAL_Y: u16 = 10;
+    const INITIAL_Y: u16 = 1;
     const NUMBER: u16 = 11;
-    const SLOWER_THAN_CYCLE: u128 = 10;
+    const SLOWER_THAN_CYCLE: u128 = 100;
     const X_SHIFT_PER_UPDATE: i16 = 1;
     const Y_SHIFT_PER_UPDATE: i16 = 2;
     const ROWS_DELAY_SHIFT: u64 = 20;
-    const ROWS_NUMBER: usize = 2;
+    const ROWS_NUMBER: usize = 5;
 
     fn init() -> LigmaResult<Aliens> {
-        let funny_alien_model = include_str!("./assets/alien1.txt");
-        let funny_alien_prototype = parse_prototype(funny_alien_model)?;
-        let step: usize = 4;
+        let step: usize = 5;
 
-        let rows = (0..Self::ROWS_NUMBER)
-            .map(|idx| {
-                let row = generate_row_of_aliens(
-                    &funny_alien_prototype,
-                    Aliens::INITIAL_X,
-                    Aliens::INITIAL_Y + (idx * step) as u16,
-                    Aliens::NUMBER,
-                );
+        let squid_model = include_str!("./assets/squid.txt");
+        let squid_prototype = parse_prototype(squid_model)?;
 
-                AliensRow {
-                    aliens: row,
-                    last_update: SystemTime::now()
-                        + Duration::from_millis(
-                            Aliens::ROWS_DELAY_SHIFT
-                                * (Self::ROWS_NUMBER - 1 - idx) as u64
-                                * MS_PER_UPDATE as u64,
-                        ),
-                }
-            })
-            .collect();
+        let crab_model = include_str!("./assets/crab.txt");
+        let crab_prototype = parse_prototype(crab_model)?;
+
+        let octopus_model = include_str!("./assets/octopus.txt");
+        let octopus_prototype = parse_prototype(octopus_model)?;
+
+        let rows = [
+            &squid_prototype,
+            &crab_prototype,
+            &crab_prototype,
+            &octopus_prototype,
+            &octopus_prototype,
+        ]
+        .iter()
+        .enumerate()
+        .map(|(idx, &prototype)| {
+            let row = generate_row_of_aliens(
+                prototype,
+                Aliens::INITIAL_X,
+                Aliens::INITIAL_Y + (idx * step) as u16,
+                Aliens::NUMBER,
+            );
+
+            AliensRow {
+                aliens: row,
+                last_update: SystemTime::now()
+                    + Duration::from_millis(
+                        Aliens::ROWS_DELAY_SHIFT
+                            * (Self::ROWS_NUMBER - 1 - idx) as u64
+                            * MS_PER_UPDATE as u64,
+                    ),
+            }
+        })
+        .collect();
 
         Ok(Aliens {
             aliens_rows: rows,
@@ -312,29 +327,22 @@ impl AliensRow {
     }
 
     fn need_to_change_direction(&self, direction: AlienDirection) -> bool {
-        let (x_shift, terminal_value) = match direction {
-            AlienDirection::Left => (-Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MIN_X as i16),
-            AlienDirection::Right => (Aliens::X_SHIFT_PER_UPDATE, VIEWPORT_MAX_X as i16),
-        };
-
-        let comparer = if x_shift > 0 {
-            |left: i16, right: i16| left > right
-        } else {
-            |left: i16, right: i16| left <= right
-        };
-
-        self.aliens
-            .iter()
-            .map(|a| {
-                if x_shift > 0 {
-                    a.position.last()
-                } else {
-                    a.position.first()
-                }
-            })
-            .filter(|a| a.is_some())
-            .map(|a| a.unwrap())
-            .any(|a| comparer(a.x as i16 + x_shift, terminal_value))
+        match direction {
+            AlienDirection::Left => {
+                let alien_in_question = self.aliens.first().unwrap();
+                alien_in_question
+                    .position
+                    .iter()
+                    .any(|p| p.x as i16 - Aliens::X_SHIFT_PER_UPDATE <= VIEWPORT_MIN_X as i16)
+            }
+            AlienDirection::Right => {
+                let alien_in_question = self.aliens.last().unwrap();
+                alien_in_question
+                    .position
+                    .iter()
+                    .any(|p| p.x as i16 + Aliens::X_SHIFT_PER_UPDATE > VIEWPORT_MAX_X as i16)
+            }
+        }
     }
 }
 
@@ -348,20 +356,12 @@ fn generate_row_of_aliens(
     init_y: u16,
     number: u16,
 ) -> Vec<Alien> {
-    let step: u16 = 9;
+    let step: u16 = 14;
 
     (0..number)
-        .map(|i| {
-            alien_prototype
-                .iter()
-                .map(|a| Coord {
-                    x: a.x + init_x + i * step,
-                    y: a.y + init_y,
-                    ch: a.ch,
-                })
-                .collect()
+        .map(|i| Alien {
+            position: shift_prototype(alien_prototype, init_x + i * step, init_y),
         })
-        .map(|p| Alien { position: p })
         .collect()
 }
 
@@ -374,11 +374,7 @@ fn parse_prototype(content: &str) -> LigmaResult<Vec<Coord>> {
             .map_err(|_| U16_CONVERT_ERROR)?;
         let y = u16::from_str_radix(parts.next().ok_or(ASSETS_PARSING_ERROR)?, 10)
             .map_err(|_| U16_CONVERT_ERROR)?;
-        let chars = parts
-            .next()
-            .ok_or(ASSETS_PARSING_ERROR)?
-            .chars()
-            .collect::<Vec<char>>();
+        let chars = parts.next().unwrap_or(" ").chars().collect::<Vec<char>>();
 
         let ch = chars.get(0).ok_or(ASSETS_CHAR_ERROR)?;
 

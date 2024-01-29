@@ -18,7 +18,7 @@ use crate::{
 
 pub const MS_PER_UPDATE: u128 = 10;
 pub const VIEWPORT_MIN_X: u16 = 1;
-pub const VIEWPORT_MAX_X: u16 = 130;
+pub const VIEWPORT_MAX_X: u16 = 200;
 pub const VIEWPORT_MIN_Y: u16 = 1;
 pub const VIEWPORT_MAX_Y: u16 = 40;
 
