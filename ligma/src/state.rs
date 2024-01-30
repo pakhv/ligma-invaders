@@ -152,6 +152,33 @@ impl State {
     pub fn update_aliens(&mut self) {
         self.aliens.update();
     }
+
+    pub fn apply_collisions(&mut self) {
+        if self.player.laser.is_none() {
+            return;
+        }
+
+        let laser = self.player.laser.clone().unwrap().position;
+
+        for aliens_row in self.aliens.aliens_rows.iter_mut().rev() {
+            for (idx, alien) in aliens_row.aliens.iter().enumerate() {
+                let killed_alien = alien
+                    .position
+                    .iter()
+                    .find(|&p| collides_with_laser(&laser, p));
+
+                if let Some(_) = killed_alien {
+                    aliens_row.aliens.remove(idx);
+                    self.player.laser = None;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn collides_with_laser(laser: &Vec<Coord>, coord: &Coord) -> bool {
+    coord.x == laser[0].x && coord.y == laser[0].y || coord.x == laser[1].x && coord.y == laser[1].y
 }
 
 impl Player {
@@ -327,20 +354,23 @@ impl AliensRow {
     }
 
     fn need_to_change_direction(&self, direction: AlienDirection) -> bool {
-        match direction {
-            AlienDirection::Left => {
-                let alien_in_question = self.aliens.first().unwrap();
-                alien_in_question
-                    .position
-                    .iter()
-                    .any(|p| p.x as i16 - Aliens::X_SHIFT_PER_UPDATE <= VIEWPORT_MIN_X as i16)
-            }
-            AlienDirection::Right => {
-                let alien_in_question = self.aliens.last().unwrap();
-                alien_in_question
-                    .position
-                    .iter()
-                    .any(|p| p.x as i16 + Aliens::X_SHIFT_PER_UPDATE > VIEWPORT_MAX_X as i16)
+        match self.aliens.len() {
+            0 => false,
+            _ => {
+                match direction {
+                    AlienDirection::Left => {
+                        let alien_in_question = self.aliens.first().unwrap();
+                        alien_in_question.position.iter().any(|p| {
+                            p.x as i16 - Aliens::X_SHIFT_PER_UPDATE <= VIEWPORT_MIN_X as i16
+                        })
+                    }
+                    AlienDirection::Right => {
+                        let alien_in_question = self.aliens.last().unwrap();
+                        alien_in_question.position.iter().any(|p| {
+                            p.x as i16 + Aliens::X_SHIFT_PER_UPDATE > VIEWPORT_MAX_X as i16
+                        })
+                    }
+                }
             }
         }
     }

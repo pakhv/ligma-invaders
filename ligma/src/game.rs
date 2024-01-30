@@ -84,6 +84,7 @@ impl LigmaInvaders {
 
             self.state.update_player_laser();
             self.state.update_aliens();
+            self.state.apply_collisions();
 
             if lag < MS_PER_UPDATE {
                 self.render()
