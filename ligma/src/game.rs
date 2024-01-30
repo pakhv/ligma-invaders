@@ -116,6 +116,12 @@ impl LigmaInvaders {
             }
         }
 
+        for bunker in &self.state.bunkers.positions {
+            for Coord { x, y, ch } in &bunker.position {
+                queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+            }
+        }
+
         self.std_out.flush()
     }
 

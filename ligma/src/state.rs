@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 pub struct State {
     pub player: Player,
     pub aliens: Aliens,
+    pub bunkers: Bunkers,
     prototypes: Prototypes,
 }
 
@@ -30,9 +31,35 @@ pub struct Player {
     pub laser: Option<Laser>,
 }
 
+trait Row {
+    fn generate(position: Vec<Coord>) -> Self;
+}
+
 #[derive(Debug)]
 pub struct Alien {
     pub position: Vec<Coord>,
+}
+
+impl Row for Alien {
+    fn generate(position: Vec<Coord>) -> Alien {
+        Alien { position }
+    }
+}
+
+#[derive(Debug)]
+pub struct Bunker {
+    pub position: Vec<Coord>,
+}
+
+impl Row for Bunker {
+    fn generate(position: Vec<Coord>) -> Bunker {
+        Bunker { position }
+    }
+}
+
+#[derive(Debug)]
+pub struct Bunkers {
+    pub positions: Vec<Bunker>,
 }
 
 #[derive(Debug)]
@@ -87,6 +114,7 @@ impl State {
                 laser: None,
             },
             aliens: Aliens::init()?,
+            bunkers: Bunkers::init()?,
             prototypes: Prototypes {
                 laser: laser_prototype,
             },
@@ -177,10 +205,6 @@ impl State {
     }
 }
 
-fn collides_with_laser(laser: &Vec<Coord>, coord: &Coord) -> bool {
-    coord.x == laser[0].x && coord.y == laser[0].y || coord.x == laser[1].x && coord.y == laser[1].y
-}
-
 impl Player {
     const SPEED: i16 = 3;
     const LASER_SPEED: i16 = 1;
@@ -247,6 +271,7 @@ impl Aliens {
     const Y_SHIFT_PER_UPDATE: i16 = 2;
     const ROWS_DELAY_SHIFT: u64 = 20;
     const ROWS_NUMBER: usize = 5;
+    const STEP: u16 = 14;
 
     fn init() -> LigmaResult<Aliens> {
         let step: usize = 5;
@@ -275,6 +300,7 @@ impl Aliens {
                 Aliens::INITIAL_X,
                 Aliens::INITIAL_Y + (idx * step) as u16,
                 Aliens::NUMBER,
+                Aliens::STEP,
             );
 
             AliensRow {
@@ -380,18 +406,37 @@ impl Laser {
     const MODEL_HEIGHT: u16 = 2;
 }
 
-fn generate_row_of_aliens(
+impl Bunkers {
+    const INITIAL_X: u16 = 4;
+    const INITIAL_Y: u16 = 33;
+    const NUMBER: u16 = 4;
+    const STEP: u16 = 40;
+
+    fn init() -> LigmaResult<Bunkers> {
+        let bunker_model = include_str!("./assets/bunker.txt");
+        let bunker_prototype = parse_prototype(bunker_model)?;
+
+        Ok(Bunkers {
+            positions: generate_row_of_aliens(
+                &bunker_prototype,
+                Self::INITIAL_X,
+                Self::INITIAL_Y,
+                Self::NUMBER,
+                Self::STEP,
+            ),
+        })
+    }
+}
+
+fn generate_row_of_aliens<T: Row>(
     alien_prototype: &Vec<Coord>,
     init_x: u16,
     init_y: u16,
     number: u16,
-) -> Vec<Alien> {
-    let step: u16 = 14;
-
+    step: u16,
+) -> Vec<T> {
     (0..number)
-        .map(|i| Alien {
-            position: shift_prototype(alien_prototype, init_x + i * step, init_y),
-        })
+        .map(|i| T::generate(shift_prototype(alien_prototype, init_x + i * step, init_y)))
         .collect()
 }
 
@@ -423,4 +468,8 @@ fn shift_prototype(prototype: &Vec<Coord>, x_shift: u16, y_shift: u16) -> Vec<Co
             ch: c.ch,
         })
         .collect()
+}
+
+fn collides_with_laser(laser: &Vec<Coord>, coord: &Coord) -> bool {
+    coord.x == laser[0].x && coord.y == laser[0].y || coord.x == laser[1].x && coord.y == laser[1].y
 }
