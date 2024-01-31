@@ -10,6 +10,7 @@ pub struct State {
     pub aliens: Aliens,
     pub bunkers: Bunkers,
     prototypes: Prototypes,
+    player_color: RgbColor,
 }
 
 #[derive(Debug)]
@@ -29,6 +30,13 @@ pub struct Player {
     pub health: usize,
     pub position: Vec<Coord>,
     pub laser: Option<Laser>,
+}
+
+#[derive(Debug)]
+pub struct RgbColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 trait Row {
@@ -118,6 +126,11 @@ impl State {
             prototypes: Prototypes {
                 laser: laser_prototype,
             },
+            player_color: RgbColor {
+                r: 32,
+                g: 255,
+                b: 32,
+            },
         })
     }
 
@@ -188,6 +201,16 @@ impl State {
 
         let laser = self.player.laser.clone().unwrap().position;
 
+        for bunker in self.bunkers.positions.iter_mut() {
+            match bunker.remove_shot_positions(&laser) {
+                true => {
+                    self.player.laser = None;
+                    return;
+                }
+                false => continue,
+            }
+        }
+
         for aliens_row in self.aliens.aliens_rows.iter_mut().rev() {
             for (idx, alien) in aliens_row.aliens.iter().enumerate() {
                 let killed_alien = alien
@@ -203,10 +226,14 @@ impl State {
             }
         }
     }
+
+    pub fn get_player_color(&self) -> &RgbColor {
+        &self.player_color
+    }
 }
 
 impl Player {
-    const SPEED: i16 = 3;
+    const SPEED: i16 = 2;
     const LASER_SPEED: i16 = 1;
     const HEALTH: usize = 3;
     const INITIAL_X: u16 = 1;
@@ -425,6 +452,30 @@ impl Bunkers {
                 Self::STEP,
             ),
         })
+    }
+}
+
+impl Bunker {
+    fn remove_shot_positions(&mut self, laser: &Vec<Coord>) -> bool {
+        let shot_position = self
+            .position
+            .iter()
+            .find(|p| collides_with_laser(laser, p))
+            .cloned();
+
+        match shot_position {
+            Some(shot_position) => {
+                self.position.retain(|p| {
+                    !((p.x == shot_position.x
+                        || p.x == shot_position.x - 1
+                        || p.x == shot_position.x + 1)
+                        && p.y == shot_position.y)
+                });
+
+                true
+            }
+            None => false,
+        }
     }
 }
 

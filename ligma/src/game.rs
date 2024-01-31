@@ -6,7 +6,8 @@ use std::{
 use crossterm::{
     cursor,
     event::{self, poll, read, Event, KeyCode, KeyEvent},
-    execute, queue, style,
+    execute, queue,
+    style::{self, Color, Stylize},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
 
@@ -96,10 +97,20 @@ impl LigmaInvaders {
     }
 
     fn render(&mut self) -> Result<()> {
+        let player_color = self.state.get_player_color();
+
         queue!(self.std_out, terminal::Clear(terminal::ClearType::All))?;
 
         for Coord { x, y, ch } in &self.state.player.position {
-            queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+            queue!(
+                self.std_out,
+                cursor::MoveTo(*x, *y),
+                style::PrintStyledContent(ch.with(Color::Rgb {
+                    r: player_color.r,
+                    g: player_color.g,
+                    b: player_color.b,
+                }))
+            )?;
         }
 
         if self.state.player.laser.is_some() {
@@ -118,7 +129,15 @@ impl LigmaInvaders {
 
         for bunker in &self.state.bunkers.positions {
             for Coord { x, y, ch } in &bunker.position {
-                queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+                queue!(
+                    self.std_out,
+                    cursor::MoveTo(*x, *y),
+                    style::PrintStyledContent(ch.with(Color::Rgb {
+                        r: player_color.r,
+                        g: player_color.g,
+                        b: player_color.b,
+                    }))
+                )?;
             }
         }
 
