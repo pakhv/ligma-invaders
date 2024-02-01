@@ -2,6 +2,7 @@ use crate::{
     game::{MS_PER_UPDATE, VIEWPORT_MAX_X, VIEWPORT_MAX_Y, VIEWPORT_MIN_X, VIEWPORT_MIN_Y},
     ligma_result::LigmaResult,
 };
+use rand::Rng;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
@@ -79,22 +80,17 @@ pub struct AliensRow {
 #[derive(Debug)]
 pub struct Aliens {
     pub aliens_rows: Vec<AliensRow>,
+    pub lasers: Vec<Laser>,
     times_slower_than_cycle: u128,
     direction: AlienDirection,
+    last_shot: SystemTime,
 }
 
 #[derive(Debug, Clone)]
 pub struct Laser {
     pub position: Vec<Coord>,
-    pub direction: LaserDirection,
     last_update: SystemTime,
     times_slower_than_cycle: u128,
-}
-
-#[derive(Debug, Clone)]
-pub enum LaserDirection {
-    Up,
-    Down,
 }
 
 #[derive(Debug, Clone)]
@@ -167,18 +163,10 @@ impl State {
 
         laser.last_update = SystemTime::now();
 
-        let shift: i16 = match laser.direction {
-            LaserDirection::Up => -Player::LASER_SPEED,
-            LaserDirection::Down => Player::LASER_SPEED,
-        };
-
         if laser
             .position
             .iter()
-            .find(|p| {
-                p.y as i16 + shift < VIEWPORT_MIN_Y as i16
-                    || p.y as i16 + shift > VIEWPORT_MAX_Y as i16
-            })
+            .find(|p| p.y as i16 - Player::LASER_SPEED < VIEWPORT_MIN_Y as i16)
             .is_some()
         {
             self.player.laser = None;
@@ -186,7 +174,7 @@ impl State {
         }
 
         laser.position.iter_mut().for_each(|p| {
-            p.y = (p.y as i16 + shift) as u16;
+            p.y = (p.y as i16 - Player::LASER_SPEED) as u16;
         });
     }
 
@@ -230,6 +218,12 @@ impl State {
     pub fn get_player_color(&self) -> &RgbColor {
         &self.player_color
     }
+
+    pub fn update_aliens_lasers(&mut self) {
+        self.aliens.update_existing_aliens_lasers();
+        self.aliens
+            .shoot(&self.player.position, &self.prototypes.laser);
+    }
 }
 
 impl Player {
@@ -238,7 +232,7 @@ impl Player {
     const HEALTH: usize = 3;
     const INITIAL_X: u16 = 1;
     const INITIAL_Y: u16 = 40;
-    const LASER_SLOWER_THAN_CYCLE: u128 = 2;
+    const LASER_SLOWER_THAN_CYCLE: u128 = 1;
 
     fn shoot(&mut self, prototype: &Vec<Coord>) {
         let tip_position = self.position.first().unwrap();
@@ -250,7 +244,6 @@ impl Player {
 
         self.laser = Some(Laser {
             position,
-            direction: LaserDirection::Up,
             last_update: SystemTime::now(),
             times_slower_than_cycle: Self::LASER_SLOWER_THAN_CYCLE,
         })
@@ -299,6 +292,10 @@ impl Aliens {
     const ROWS_DELAY_SHIFT: u64 = 20;
     const ROWS_NUMBER: usize = 5;
     const STEP: u16 = 14;
+    const MAX_LASERS_AT_A_TIME: usize = 3;
+    const LASER_SPEED: u16 = 2;
+    const SHOTS_MIN_INTERVAL: u128 = 200;
+    const LASER_SLOWER_THAN_CYCLE: u128 = 25;
 
     fn init() -> LigmaResult<Aliens> {
         let step: usize = 5;
@@ -346,6 +343,8 @@ impl Aliens {
             aliens_rows: rows,
             times_slower_than_cycle: Aliens::SLOWER_THAN_CYCLE,
             direction: AlienDirection::Right,
+            lasers: vec![],
+            last_shot: SystemTime::now(),
         })
     }
 
@@ -393,6 +392,74 @@ impl Aliens {
                             * MS_PER_UPDATE as u64,
                     );
             });
+    }
+
+    fn update_existing_aliens_lasers(&mut self) {
+        for laser in self.lasers.iter_mut() {
+            if laser.last_update.elapsed().unwrap().as_millis()
+                < laser.times_slower_than_cycle * MS_PER_UPDATE
+            {
+                continue;
+            }
+
+            laser.last_update = SystemTime::now();
+
+            laser.position.iter_mut().for_each(|p| {
+                p.y = p.y + Aliens::LASER_SPEED;
+            });
+        }
+
+        self.lasers
+            .retain(|l| l.position.iter().find(|p| p.y < VIEWPORT_MAX_Y).is_some());
+    }
+
+    fn shoot(&mut self, player: &Vec<Coord>, laser_prototype: &Vec<Coord>) {
+        if self.last_shot.elapsed().unwrap().as_millis() <= Self::SHOTS_MIN_INTERVAL * MS_PER_UPDATE
+        {
+            return;
+        }
+
+        let mut rng = rand::thread_rng();
+
+        let mut closest_aliens = self
+            .aliens_rows
+            .iter()
+            .flat_map(|r| &r.aliens)
+            .map(|a| {
+                (
+                    a.position.first().unwrap(),
+                    get_distance_between_positions(
+                        a.position.first().unwrap(),
+                        player.first().unwrap(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        closest_aliens.sort_by(|(_, d1), (_, d2)| d1.partial_cmp(d2).unwrap());
+
+        for (position, _) in closest_aliens.iter().take(Aliens::MAX_LASERS_AT_A_TIME) {
+            if self.lasers.len() >= Aliens::MAX_LASERS_AT_A_TIME {
+                return;
+            }
+
+            if rng.gen_range(0..5) == 1 {
+                let position = shift_prototype(
+                    laser_prototype,
+                    position.x,
+                    position.y + Laser::MODEL_HEIGHT,
+                );
+
+                self.lasers.push(Laser {
+                    position,
+                    last_update: SystemTime::now(),
+                    times_slower_than_cycle: Aliens::LASER_SLOWER_THAN_CYCLE,
+                });
+
+                self.last_shot = SystemTime::now();
+                return;
+            }
+        }
     }
 }
 
@@ -523,4 +590,11 @@ fn shift_prototype(prototype: &Vec<Coord>, x_shift: u16, y_shift: u16) -> Vec<Co
 
 fn collides_with_laser(laser: &Vec<Coord>, coord: &Coord) -> bool {
     coord.x == laser[0].x && coord.y == laser[0].y || coord.x == laser[1].x && coord.y == laser[1].y
+}
+
+fn get_distance_between_positions(first: &Coord, second: &Coord) -> f32 {
+    f32::sqrt(
+        f32::powi(first.x as f32 - second.x as f32, 2)
+            + f32::powi(first.y as f32 - second.y as f32, 2),
+    )
 }

@@ -21,7 +21,7 @@ pub const MS_PER_UPDATE: u128 = 10;
 pub const VIEWPORT_MIN_X: u16 = 1;
 pub const VIEWPORT_MAX_X: u16 = 200;
 pub const VIEWPORT_MIN_Y: u16 = 1;
-pub const VIEWPORT_MAX_Y: u16 = 40;
+pub const VIEWPORT_MAX_Y: u16 = 60;
 
 #[derive(Debug)]
 pub struct LigmaInvaders {
@@ -85,6 +85,7 @@ impl LigmaInvaders {
 
             self.state.update_player_laser();
             self.state.update_aliens();
+            self.state.update_aliens_lasers();
             self.state.apply_collisions();
 
             if lag < MS_PER_UPDATE {
@@ -124,6 +125,12 @@ impl LigmaInvaders {
                 for Coord { x, y, ch } in &alien.position {
                     queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
                 }
+            }
+        }
+
+        for laser in self.state.aliens.lasers.iter() {
+            for Coord { x, y, ch } in &laser.position {
+                queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
             }
         }
 
