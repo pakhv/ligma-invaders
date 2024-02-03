@@ -183,6 +183,21 @@ impl State {
     }
 
     pub fn apply_collisions(&mut self) {
+        self.handle_player_laser();
+        self.handle_aliens_lasers();
+    }
+
+    pub fn get_player_color(&self) -> &RgbColor {
+        &self.player_color
+    }
+
+    pub fn update_aliens_lasers(&mut self) {
+        self.aliens.update_existing_aliens_lasers();
+        self.aliens
+            .shoot(&self.player.position, &self.prototypes.laser);
+    }
+
+    fn handle_player_laser(&mut self) {
         if self.player.laser.is_none() {
             return;
         }
@@ -215,14 +230,25 @@ impl State {
         }
     }
 
-    pub fn get_player_color(&self) -> &RgbColor {
-        &self.player_color
-    }
+    fn handle_aliens_lasers(&mut self) {
+        if self.bunkers.positions.len() == 0 {
+            return;
+        }
 
-    pub fn update_aliens_lasers(&mut self) {
-        self.aliens.update_existing_aliens_lasers();
-        self.aliens
-            .shoot(&self.player.position, &self.prototypes.laser);
+        self.aliens.lasers.retain(|laser| {
+            for bunker in self.bunkers.positions.iter_mut() {
+                match bunker.remove_shot_positions(&laser.position) {
+                    true => return false,
+                    false => (),
+                }
+            }
+
+            if self.player.is_shot(&laser.position) {
+                return false;
+            }
+
+            return true;
+        });
     }
 }
 
@@ -231,7 +257,7 @@ impl Player {
     const LASER_SPEED: i16 = 1;
     const HEALTH: usize = 3;
     const INITIAL_X: u16 = 1;
-    const INITIAL_Y: u16 = 40;
+    const INITIAL_Y: u16 = 70;
     const LASER_SLOWER_THAN_CYCLE: u128 = 1;
 
     fn shoot(&mut self, prototype: &Vec<Coord>) {
@@ -279,6 +305,16 @@ impl Player {
         self.position.iter_mut().for_each(|c| {
             c.x = (c.x as i16 + x_shift) as u16;
         });
+    }
+
+    fn is_shot(&mut self, laser: &Vec<Coord>) -> bool {
+        match self.position.iter().find(|p| collides_with_laser(laser, p)) {
+            Some(_) => {
+                self.health -= 1;
+                true
+            }
+            None => false,
+        }
     }
 }
 
@@ -502,7 +538,7 @@ impl Laser {
 
 impl Bunkers {
     const INITIAL_X: u16 = 4;
-    const INITIAL_Y: u16 = 33;
+    const INITIAL_Y: u16 = 55;
     const NUMBER: u16 = 4;
     const STEP: u16 = 40;
 

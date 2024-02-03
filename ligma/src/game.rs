@@ -21,7 +21,7 @@ pub const MS_PER_UPDATE: u128 = 10;
 pub const VIEWPORT_MIN_X: u16 = 1;
 pub const VIEWPORT_MAX_X: u16 = 200;
 pub const VIEWPORT_MIN_Y: u16 = 1;
-pub const VIEWPORT_MAX_Y: u16 = 60;
+pub const VIEWPORT_MAX_Y: u16 = 75;
 
 #[derive(Debug)]
 pub struct LigmaInvaders {
@@ -58,7 +58,10 @@ impl LigmaInvaders {
                 }
             }
 
-            self.update_and_render()?;
+            match self.update_and_render()? {
+                InputResult::Continue => (),
+                InputResult::Quit => break,
+            }
         }
 
         self.reset_screen()
@@ -76,7 +79,11 @@ impl LigmaInvaders {
         disable_raw_mode()
     }
 
-    fn update_and_render(&mut self) -> LigmaResult<()> {
+    fn update_and_render(&mut self) -> LigmaResult<InputResult> {
+        if self.state.player.health == 0 {
+            return self.render_lost_screen();
+        }
+
         let mut lag = self.get_elapsed().as_millis();
 
         while lag >= MS_PER_UPDATE {
@@ -94,7 +101,7 @@ impl LigmaInvaders {
             }
         }
 
-        Ok(())
+        Ok(InputResult::Continue)
     }
 
     fn render(&mut self) -> Result<()> {
@@ -195,6 +202,28 @@ impl LigmaInvaders {
                 _ => Ok(InputResult::Continue),
             },
             _ => Ok(InputResult::Continue),
+        }
+    }
+
+    fn render_lost_screen(&mut self) -> LigmaResult<InputResult> {
+        execute!(self.std_out, terminal::Clear(terminal::ClearType::All))
+            .map_err(|err| format!("error while rendering, {err}"))?;
+
+        loop {
+            match read().map_err(|err| format!("error while reading players input, {err}"))? {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(ch),
+                    ..
+                }) => match ch {
+                    'q' => return Ok(InputResult::Quit),
+                    'c' => {
+                        self.state = State::new()?;
+                        return Ok(InputResult::Continue);
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
         }
     }
 }
