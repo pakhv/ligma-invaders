@@ -224,6 +224,8 @@ impl State {
                 if let Some(_) = killed_alien {
                     aliens_row.aliens.remove(idx);
                     self.player.laser = None;
+                    self.aliens.set_speed();
+
                     return;
                 }
             }
@@ -321,7 +323,7 @@ impl Player {
 impl Aliens {
     const INITIAL_X: u16 = 1;
     const INITIAL_Y: u16 = 1;
-    const NUMBER: u16 = 11;
+    const NUMBER: u16 = 4;
     const SLOWER_THAN_CYCLE: u128 = 100;
     const X_SHIFT_PER_UPDATE: i16 = 1;
     const Y_SHIFT_PER_UPDATE: i16 = 2;
@@ -416,15 +418,19 @@ impl Aliens {
             AlienDirection::Right => AlienDirection::Left,
         };
 
+        self.aliens_rows.retain(|r| r.aliens.len() > 0);
+        let rows_left = self.aliens_rows.len();
+
         self.aliens_rows
             .iter_mut()
             .enumerate()
+            .filter(|(_, r)| r.aliens.len() > 0)
             .for_each(|(idx, r)| {
                 r.shift_aliens(0, Aliens::Y_SHIFT_PER_UPDATE);
                 r.last_update = SystemTime::now()
                     + Duration::from_millis(
                         Self::ROWS_DELAY_SHIFT
-                            * (Self::ROWS_NUMBER - 1 - idx) as u64
+                            * (rows_left - 1 - idx) as u64
                             * MS_PER_UPDATE as u64,
                     );
             });
@@ -496,6 +502,27 @@ impl Aliens {
                 return;
             }
         }
+    }
+
+    fn set_speed(&mut self) {
+        self.times_slower_than_cycle = match self.get_aliens_count() {
+            c if c >= 50 => Self::SLOWER_THAN_CYCLE,
+            c if c < 50 && c >= 40 => 80,
+            c if c < 40 && c >= 30 => 50,
+            c if c < 30 && c >= 20 => 20,
+            c if c < 20 && c >= 10 => 5,
+            c if c < 10 && c >= 5 => 3,
+            c if c < 5 && c >= 2 => 2,
+            _ => 1,
+        };
+    }
+
+    pub fn get_aliens_count(&self) -> usize {
+        self.aliens_rows
+            .iter()
+            .flat_map(|r| &r.aliens)
+            .collect::<Vec<_>>()
+            .len()
     }
 }
 
