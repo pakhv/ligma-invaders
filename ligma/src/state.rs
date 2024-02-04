@@ -197,6 +197,10 @@ impl State {
             .shoot(&self.player.position, &self.prototypes.laser);
     }
 
+    pub fn get_aliens_count(&self) -> usize {
+        self.aliens.get_aliens_count()
+    }
+
     fn handle_player_laser(&mut self) {
         if self.player.laser.is_none() {
             return;
@@ -252,6 +256,10 @@ impl State {
             return true;
         });
     }
+
+    pub fn aliens_invaded(&self) -> bool {
+        self.aliens.invaded()
+    }
 }
 
 impl Player {
@@ -259,7 +267,7 @@ impl Player {
     const LASER_SPEED: i16 = 1;
     const HEALTH: usize = 3;
     const INITIAL_X: u16 = 1;
-    const INITIAL_Y: u16 = 70;
+    const INITIAL_Y: u16 = VIEWPORT_MAX_Y - 5;
     const LASER_SLOWER_THAN_CYCLE: u128 = 1;
 
     fn shoot(&mut self, prototype: &Vec<Coord>) {
@@ -323,7 +331,7 @@ impl Player {
 impl Aliens {
     const INITIAL_X: u16 = 1;
     const INITIAL_Y: u16 = 1;
-    const NUMBER: u16 = 4;
+    const NUMBER: u16 = 11;
     const SLOWER_THAN_CYCLE: u128 = 100;
     const X_SHIFT_PER_UPDATE: i16 = 1;
     const Y_SHIFT_PER_UPDATE: i16 = 2;
@@ -507,22 +515,30 @@ impl Aliens {
     fn set_speed(&mut self) {
         self.times_slower_than_cycle = match self.get_aliens_count() {
             c if c >= 50 => Self::SLOWER_THAN_CYCLE,
-            c if c < 50 && c >= 40 => 80,
-            c if c < 40 && c >= 30 => 50,
-            c if c < 30 && c >= 20 => 20,
-            c if c < 20 && c >= 10 => 5,
-            c if c < 10 && c >= 5 => 3,
-            c if c < 5 && c >= 2 => 2,
+            c if c < 50 && c >= 40 => Self::SLOWER_THAN_CYCLE / 2,
+            c if c < 40 && c >= 30 => Self::SLOWER_THAN_CYCLE / 4,
+            c if c < 30 && c >= 20 => Self::SLOWER_THAN_CYCLE / 8,
+            c if c < 20 && c >= 10 => Self::SLOWER_THAN_CYCLE / 16,
+            c if c < 10 && c >= 5 => Self::SLOWER_THAN_CYCLE / 32,
+            c if c < 5 && c >= 2 => Self::SLOWER_THAN_CYCLE / 50,
             _ => 1,
         };
     }
 
-    pub fn get_aliens_count(&self) -> usize {
+    fn get_aliens_count(&self) -> usize {
         self.aliens_rows
             .iter()
             .flat_map(|r| &r.aliens)
             .collect::<Vec<_>>()
             .len()
+    }
+
+    fn invaded(&self) -> bool {
+        self.aliens_rows
+            .iter()
+            .flat_map(|r| r.aliens.iter().flat_map(|a| &a.position))
+            .find(|p| p.y >= Bunkers::INITIAL_Y)
+            .is_some()
     }
 }
 
@@ -564,10 +580,10 @@ impl Laser {
 }
 
 impl Bunkers {
-    const INITIAL_X: u16 = 4;
-    const INITIAL_Y: u16 = 55;
+    const INITIAL_X: u16 = VIEWPORT_MAX_X / (2 * Self::NUMBER);
+    const INITIAL_Y: u16 = 3 * VIEWPORT_MAX_Y / 4;
     const NUMBER: u16 = 4;
-    const STEP: u16 = 40;
+    const STEP: u16 = VIEWPORT_MAX_X / Self::NUMBER;
 
     fn init() -> LigmaResult<Bunkers> {
         let bunker_model = include_str!("./assets/bunker.txt");

@@ -20,16 +20,17 @@ pub const MS_PER_UPDATE: u128 = 10;
 pub const VIEWPORT_MIN_X: u16 = 1;
 pub const VIEWPORT_MAX_X: u16 = 200;
 pub const VIEWPORT_MIN_Y: u16 = 1;
-pub const VIEWPORT_MAX_Y: u16 = 75;
+pub const VIEWPORT_MAX_Y: u16 = 72;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum InputResult {
     Continue,
     Quit,
 }
 
 #[derive(Debug)]
-pub enum GameOver {
+pub enum GameState {
+    NewGame,
     Won,
     Lost,
 }
@@ -53,6 +54,14 @@ impl LigmaInvaders {
     pub fn start(&mut self) -> LigmaResult<()> {
         self.prepare_screen()
             .map_err(|err| format!("error while preparing the screen, {err}"))?;
+        let start_screen_result = self.render_game_over_screen(GameState::NewGame)?;
+
+        if start_screen_result == InputResult::Quit {
+            return self
+                .reset_screen()
+                .map_err(|err| format!("error while resetting the screen, {err}"));
+        }
+
         self.set_last_update();
 
         loop {
@@ -91,12 +100,12 @@ impl LigmaInvaders {
     }
 
     fn update_and_render(&mut self) -> LigmaResult<InputResult> {
-        if self.state.player.health == 0 {
-            return self.render_game_over_screen(GameOver::Lost);
+        if self.state.player.health == 0 || self.state.aliens_invaded() {
+            return self.render_game_over_screen(GameState::Lost);
         }
 
-        if self.state.aliens.get_aliens_count() == 0 {
-            return self.render_game_over_screen(GameOver::Won);
+        if self.state.get_aliens_count() == 0 {
+            return self.render_game_over_screen(GameState::Won);
         }
 
         let mut lag = self.get_elapsed().as_millis();
@@ -136,9 +145,25 @@ impl LigmaInvaders {
             )?;
         }
 
+        let health_left = format!("HEALTH: {}", self.state.player.health);
+
+        queue!(
+            self.std_out,
+            cursor::MoveTo(2, VIEWPORT_MAX_Y - 1),
+            style::Print(health_left),
+        )?;
+
         if self.state.player.laser.is_some() {
             for Coord { x, y, ch } in &self.state.player.laser.as_ref().unwrap().position {
-                queue!(self.std_out, cursor::MoveTo(*x, *y), style::Print(ch))?;
+                queue!(
+                    self.std_out,
+                    cursor::MoveTo(*x, *y),
+                    style::PrintStyledContent(ch.with(Color::Rgb {
+                        r: player_color.r,
+                        g: player_color.g,
+                        b: player_color.b,
+                    }))
+                )?;
             }
         }
 
@@ -220,16 +245,17 @@ impl LigmaInvaders {
         }
     }
 
-    fn render_game_over_screen(&mut self, game_result: GameOver) -> LigmaResult<InputResult> {
+    fn render_game_over_screen(&mut self, game_result: GameState) -> LigmaResult<InputResult> {
         let message = match game_result {
-            GameOver::Won => "Congrats! You won. Press 'c' to play again",
-            GameOver::Lost => "You lost. Press 'c' to play again",
+            GameState::NewGame => "PRESS 'ENTER' TO START THE GAME. 'Q' TO QUIT",
+            GameState::Won => "CONGRATS! YOU WON. PRESS 'ENTER' TO PLAY AGAIN. 'Q' TO QUIT",
+            GameState::Lost => "YOU LOST. PRESS 'ENTER' TO PLAY AGAIN. 'Q' TO QUIT",
         };
 
         execute!(
             self.std_out,
             terminal::Clear(terminal::ClearType::All,),
-            cursor::MoveTo(50, 50),
+            cursor::MoveTo(VIEWPORT_MAX_X / 2 + 10, VIEWPORT_MAX_Y / 2),
             style::Print(message),
         )
         .map_err(|err| format!("error while rendering, {err}"))?;
@@ -241,12 +267,15 @@ impl LigmaInvaders {
                     ..
                 }) => match ch {
                     'q' => return Ok(InputResult::Quit),
-                    'c' => {
-                        self.state = State::new()?;
-                        return Ok(InputResult::Continue);
-                    }
                     _ => (),
                 },
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    self.state = State::new()?;
+                    return Ok(InputResult::Continue);
+                }
                 _ => (),
             }
         }
