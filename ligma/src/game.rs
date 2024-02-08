@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub const MS_PER_UPDATE: u128 = 10;
+pub const MS_PER_RENDER: u128 = 40;
 pub const VIEWPORT_MIN_X: u16 = 1;
 pub const VIEWPORT_MAX_X: u16 = 200;
 pub const VIEWPORT_MIN_Y: u16 = 1;
@@ -38,6 +39,7 @@ pub enum GameState {
 #[derive(Debug)]
 pub struct LigmaInvaders {
     last_update: SystemTime,
+    last_render: SystemTime,
     std_out: Stdout,
     state: State,
 }
@@ -46,6 +48,7 @@ impl LigmaInvaders {
     pub fn new() -> LigmaResult<LigmaInvaders> {
         Ok(LigmaInvaders {
             last_update: SystemTime::now(),
+            last_render: SystemTime::now(),
             std_out: stdout(),
             state: State::new()?,
         })
@@ -108,7 +111,7 @@ impl LigmaInvaders {
             return self.render_game_over_screen(GameState::Won);
         }
 
-        let mut lag = self.get_elapsed().as_millis();
+        let mut lag = self.get_elapsed_since_update().as_millis();
 
         while lag >= MS_PER_UPDATE {
             self.set_last_update();
@@ -118,11 +121,13 @@ impl LigmaInvaders {
             self.state.update_aliens();
             self.state.update_aliens_lasers();
             self.state.apply_collisions();
+        }
 
-            if lag < MS_PER_UPDATE {
-                self.render()
-                    .map_err(|err| format!("error while rendering game state, {err}"))?;
-            }
+        if self.get_elapsed_since_render().as_millis() > MS_PER_RENDER {
+            self.render()
+                .map_err(|err| format!("error while rendering game state, {err}"))?;
+
+            self.last_render = SystemTime::now();
         }
 
         Ok(InputResult::Continue)
@@ -202,8 +207,12 @@ impl LigmaInvaders {
         self.last_update = SystemTime::now();
     }
 
-    fn get_elapsed(&self) -> Duration {
+    fn get_elapsed_since_update(&self) -> Duration {
         self.last_update.elapsed().unwrap()
+    }
+
+    fn get_elapsed_since_render(&self) -> Duration {
+        self.last_render.elapsed().unwrap()
     }
 
     fn prepare_screen(&mut self) -> Result<()> {
